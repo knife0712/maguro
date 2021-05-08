@@ -1,8 +1,9 @@
-# ディスコードの機能が入っているモジュールをインポートする
-import discord
+import os # 基本機能
+
+import discord # ディスコードの基本機能
 
 # Botのトークンを取得
-BOT_TOKEN = "ODM5MzkxMjQ4ODI4ODU4Mzc4.YJI-BA.UCQKfue37fO6I7S_C8avRI31PR0"
+BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
 
 # クライアントオブジェクトを生成
 # これが無いとサーバーにアクセスできない
