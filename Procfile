@@ -1,1 +1,1 @@
-discordbot: python maguro.py
+maguro: python maguro.py
