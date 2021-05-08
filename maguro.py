@@ -54,7 +54,7 @@ async def on_member_update(before, after):
             if status_table[str(after.status)] == "オフライン":
                 await channel.send(after.name + " さんがお休みになられました") 
 
-            if status_table[str(after.status)] == "オンライン":
+            if (status_table[str(before.status)] == "オフライン") and (status_table[str(after.status)] == "オンライン"):
                 await channel.send(after.name + " さんがお目覚めになられました")
 
 # Botの起動とDiscordサーバーへの接続
