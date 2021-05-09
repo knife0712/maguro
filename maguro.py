@@ -48,7 +48,7 @@ async def on_member_update(before, after):
     current_datetime = datetime.datetime.now()+datetime.timedelta(hours=9)
 
     # 本日が土日である場合
-    if current_datetime.weekday() == (5 or 6):
+    if (current_datetime.weekday() == 5) or (current_datetime.weekday() == 6):
         # 現在時刻が13時以降21時未満である場合
         if ((13 <= current_datetime.hour) and (current_datetime.hour <= 21)):
             if status_table[str(after.status)] == "オフライン":
