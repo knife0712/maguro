@@ -1,69 +1,138 @@
-import os # 基本機能
-import datetime # 時刻に関する機能
+import asyncio
 
-import discord # ディスコードの基本機能
-from discord.ext import commands # コマンドを扱うための機能
+import discord
+import youtube_dl
 
-TEXT_CHANNEL_ID = 839366320691609643
-MAGURO_CHANNEL_ID = 840513454497595392
+from discord.ext import commands
 
-# Botのトークンを取得
-BOT_TOKEN = os.environ["DISCORD_BOT_TOKEN"]
+discord_token = "ODM5MzkxMjQ4ODI4ODU4Mzc4.YJI-BA.p1qYgZ-QZ-26N6g-3_b9cnLKPhk"
+voice_channel_id = "839366320691609644"
+youtube_url = "https://www.youtube.com/watch?v=H_piu9bSNHU"
 
-# intents の設定
-# 一部のイベントを受け取らない設定ができるらしい
-# とりあえずすべてのイベントを受け取る設定
-intents = discord.Intents.default()
-intents = discord.Intents.all()
+# Suppress noise about console usage from errors
+youtube_dl.utils.bug_reports_message = lambda: ''
 
-# ボットオブジェクトを生成
-# これが無いとサーバーにアクセスできない
-# コマンドを扱えるようにする（prefixは"$"）
-bot = commands.Bot(command_prefix="$", intents=intents)
 
-# メッセージ受信時に動作する処理
+ytdl_format_options = {
+    'format': 'bestaudio/best',
+    'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
+    'restrictfilenames': True,
+    'noplaylist': True,
+    'nocheckcertificate': True,
+    'ignoreerrors': False,
+    'logtostderr': False,
+    'quiet': True,
+    'no_warnings': True,
+    'default_search': 'auto',
+    'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
+}
+
+ffmpeg_options = {
+    'options': '-vn'
+}
+
+ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
+
+
+class YTDLSource(discord.PCMVolumeTransformer):
+    def __init__(self, source, *, data, volume=0.5):
+        super().__init__(source, volume)
+
+        self.data = data
+
+        self.title = data.get('title')
+        self.url = data.get('url')
+
+    @classmethod
+    async def from_url(cls, url, *, loop=None, stream=False):
+        loop = loop or asyncio.get_event_loop()
+        data = await loop.run_in_executor(None, lambda: ytdl.extract_info(url, download=not stream))
+
+        if 'entries' in data:
+            # take first item from a playlist
+            data = data['entries'][0]
+
+        filename = data['url'] if stream else ytdl.prepare_filename(data)
+        return cls(discord.FFmpegPCMAudio(filename, **ffmpeg_options), data=data)
+
+
+class Music(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.command()
+    async def join(self, ctx, *, channel: discord.VoiceChannel):
+        """Joins a voice channel"""
+        if ctx.voice_client is not None:
+            return await ctx.voice_client.move_to(channel)
+
+        await channel.connect()
+
+    @commands.command()
+    async def play(self, ctx, *, query):
+        """Plays a file from the local filesystem"""
+
+        source = discord.PCMVolumeTransformer(discord.FFmpegPCMAudio(query))
+        ctx.voice_client.play(source, after=lambda e: print('Player error: %s' % e) if e else None)
+
+        await ctx.send('Now playing: {}'.format(query))
+
+    @commands.command()
+    async def yt(self, ctx, *, url):
+        """Plays from a url (almost anything youtube_dl supports)"""
+
+        async with ctx.typing():
+            player = await YTDLSource.from_url(url, loop=self.bot.loop)
+            ctx.voice_client.play(player, after=lambda e: print('Player error: %s' % e) if e else None)
+
+        await ctx.send('Now playing: {}'.format(player.title))
+
+    @commands.command()
+    async def stream(self, ctx, *, url):
+        """Streams from a url (same as yt, but doesn't predownload)"""
+
+        async with ctx.typing():
+            player = await YTDLSource.from_url(url, loop=self.bot.loop, stream=True)
+            ctx.voice_client.play(player, after=lambda e: print('Player error: %s' % e) if e else None)
+
+        await ctx.send('Now playing: {}'.format(player.title))
+
+    @commands.command()
+    async def volume(self, ctx, volume: int):
+        """Changes the player's volume"""
+
+        if ctx.voice_client is None:
+            return await ctx.send("Not connected to a voice channel.")
+
+        ctx.voice_client.source.volume = volume / 100
+        await ctx.send("Changed volume to {}%".format(volume))
+
+    @commands.command()
+    async def stop(self, ctx):
+        """Stops and disconnects the bot from voice"""
+
+        await ctx.voice_client.disconnect()
+
+    @play.before_invoke
+    @yt.before_invoke
+    @stream.before_invoke
+    async def ensure_voice(self, ctx):
+        if ctx.voice_client is None:
+            if ctx.author.voice:
+                await ctx.author.voice.channel.connect()
+            else:
+                await ctx.send("You are not connected to a voice channel.")
+                raise commands.CommandError("Author not connected to a voice channel.")
+        elif ctx.voice_client.is_playing():
+            ctx.voice_client.stop()
+
+bot = commands.Bot(command_prefix=commands.when_mentioned_or("~"),
+                   description='Relatively simple music bot example')
+
 @bot.event
-async def on_message(message):
-    # メッセージ送信者がBotだった場合は無視する
-    # 自分自身のメッセージに反応しないようにするため
-    if message.author.bot:
-        return
+async def on_ready():
+    print('Logged in as {0} ({0.id})'.format(bot.user))
+    print('------')
 
-    # 寿司の絵文字が送られてきたとき
-    if "\N{SUSHI}" in message.content:
-        # :yum: の絵文字を返す
-        await message.channel.send("\N{FACE SAVOURING DELICIOUS FOOD}")
-
-    # 受け取ったメッセージが自分に対するメンションだった場合
-    if bot.user.mentioned_in(message):
-        # "マグロちゃん" がメッセージ中に入っていた場合
-        if "マグロちゃん" in message.content:
-            # 寿司を提供する
-            await message.channel.send("へいおまちっ！" + "\N{SUSHI}")
-
-@bot.event
-async def on_member_update(before, after):
-    # ステータスの変化を日本語にするための変換表
-    status_table = {"online":"オンライン" ,"idle":"退席中", "dnd":"取り込み中", "offline":"オフライン"}
-    # メッセージを送信するチャンネル
-    channel = bot.get_channel(MAGURO_CHANNEL_ID)
-    # 現在時刻（サーバーの関係で9時間ずれているので補正）
-    current_datetime = datetime.datetime.now()+datetime.timedelta(hours=9)
-
-    # 特定のユーザーは除く（土日も仕事の為）
-    if before.id == 623853032781643776:
-        pass
-    # それ以外のユーザーの場合
-    else:
-        # 本日が土日である場合
-        if (current_datetime.weekday() == 5) or (current_datetime.weekday() == 6):
-            # 現在時刻が13時以降21時未満である場合
-            if ((13 <= current_datetime.hour) and (current_datetime.hour <= 21)):
-                if status_table[str(after.status)] == "オフライン":
-                    await channel.send(after.name + " さんがお休みになられました") 
-
-                if (status_table[str(before.status)] == "オフライン") and (status_table[str(after.status)] == "オンライン"):
-                    await channel.send(after.name + " さんがお目覚めになられました")
-
-# Botの起動とDiscordサーバーへの接続
-bot.run(BOT_TOKEN)
+bot.add_cog(Music(bot))
+bot.run(discord_token)
