@@ -1,11 +1,12 @@
 import asyncio
+import os
 
 import discord
 import youtube_dl
 
 from discord.ext import commands
 
-discord_token = "ODM5MzkxMjQ4ODI4ODU4Mzc4.YJI-BA.p1qYgZ-QZ-26N6g-3_b9cnLKPhk"
+discord_token = os.environ["DISCORD_BOT_TOKEN"]
 voice_channel_id = "839366320691609644"
 youtube_url = "https://www.youtube.com/watch?v=H_piu9bSNHU"
 
